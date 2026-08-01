@@ -1,16 +1,20 @@
 -- ============================================================
--- 博客论坛数据库初始化 SQL
+-- 博客论坛数据库初始化 SQL（幂等版本）
 -- 在 Supabase SQL Editor 中执行此文件
+-- 可重复执行，不会报错
 -- ============================================================
 
--- 1. 用户资料表
+-- 1. 用户资料表（如果不存在则创建；已存在则添加 role 字段）
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   username text unique,
   avatar_url text,
-  role text default 'user' check (role in ('user', 'admin')),
   created_at timestamp with time zone default now()
 );
+
+-- 为旧表添加 role 字段
+alter table public.profiles
+  add column if not exists role text default 'user' check (role in ('user', 'admin'));
 
 -- 2. 文章表
 create table if not exists public.posts (
@@ -37,28 +41,35 @@ create index if not exists idx_comments_post_id on public.comments(post_id);
 create index if not exists idx_posts_user_id on public.posts(user_id);
 
 -- 5. RLS（行级安全）策略
-
--- profiles: 用户只能读写自己的资料
 alter table public.profiles enable row level security;
-
-create policy if not exists "profiles_select" on public.profiles for select using (true);
-create policy if not exists "profiles_insert" on public.profiles for insert with check (auth.uid() = id);
-create policy if not exists "profiles_update" on public.profiles for update using (auth.uid() = id);
-
--- posts: 所有人可读，登录用户可发帖，作者可编辑/删除自己的文章
 alter table public.posts enable row level security;
-
-create policy if not exists "posts_select" on public.posts for select using (true);
-create policy if not exists "posts_insert" on public.posts for insert with check (auth.uid() = user_id);
-create policy if not exists "posts_update" on public.posts for update using (auth.uid() = user_id);
-create policy if not exists "posts_delete" on public.posts for delete using (auth.uid() = user_id);
-
--- comments: 所有人可读，登录用户可评论，作者可删除自己的评论
 alter table public.comments enable row level security;
 
-create policy if not exists "comments_select" on public.comments for select using (true);
-create policy if not exists "comments_insert" on public.comments for insert with check (auth.uid() = user_id);
-create policy if not exists "comments_delete" on public.comments for delete using (auth.uid() = user_id);
+-- 删除旧策略（幂等）
+drop policy if exists "profiles_select" on public.profiles;
+drop policy if exists "profiles_insert" on public.profiles;
+drop policy if exists "profiles_update" on public.profiles;
+drop policy if exists "posts_select" on public.posts;
+drop policy if exists "posts_insert" on public.posts;
+drop policy if exists "posts_update" on public.posts;
+drop policy if exists "posts_delete" on public.posts;
+drop policy if exists "comments_select" on public.comments;
+drop policy if exists "comments_insert" on public.comments;
+drop policy if exists "comments_delete" on public.comments;
+
+-- 重新创建策略
+create policy "profiles_select" on public.profiles for select using (true);
+create policy "profiles_insert" on public.profiles for insert with check (auth.uid() = id);
+create policy "profiles_update" on public.profiles for update using (auth.uid() = id);
+
+create policy "posts_select" on public.posts for select using (true);
+create policy "posts_insert" on public.posts for insert with check (auth.uid() = user_id);
+create policy "posts_update" on public.posts for update using (auth.uid() = user_id);
+create policy "posts_delete" on public.posts for delete using (auth.uid() = user_id);
+
+create policy "comments_select" on public.comments for select using (true);
+create policy "comments_insert" on public.comments for insert with check (auth.uid() = user_id);
+create policy "comments_delete" on public.comments for delete using (auth.uid() = user_id);
 
 -- 6. 注册触发器：新用户注册时自动创建 profile
 create or replace function public.handle_new_user()
@@ -78,6 +89,7 @@ begin
     case when new.email = '348565153@qq.com' then 'admin' else 'user' end
   )
   on conflict (id) do update set
+    username = excluded.username,
     role = case when new.email = '348565153@qq.com' then 'admin' else public.profiles.role end;
 
   return new;
@@ -92,7 +104,7 @@ create trigger on_auth_user_created
 -- 7. 如果 348565153@qq.com 已经存在，强制更新为 admin
 update public.profiles
 set role = 'admin'
-where username = 'admin' or id in (
+where id in (
   select id from auth.users where email = '348565153@qq.com'
 );
 
