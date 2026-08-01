@@ -8,6 +8,7 @@ create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   username text unique,
   avatar_url text,
+  role text default 'user' check (role in ('user', 'admin')),
   created_at timestamp with time zone default now()
 );
 
@@ -40,24 +41,24 @@ create index if not exists idx_posts_user_id on public.posts(user_id);
 -- profiles: 用户只能读写自己的资料
 alter table public.profiles enable row level security;
 
-create policy "profiles_select" on public.profiles for select using (true);
-create policy "profiles_insert" on public.profiles for insert with check (auth.uid() = id);
-create policy "profiles_update" on public.profiles for update using (auth.uid() = id);
+create policy if not exists "profiles_select" on public.profiles for select using (true);
+create policy if not exists "profiles_insert" on public.profiles for insert with check (auth.uid() = id);
+create policy if not exists "profiles_update" on public.profiles for update using (auth.uid() = id);
 
 -- posts: 所有人可读，登录用户可发帖，作者可编辑/删除自己的文章
 alter table public.posts enable row level security;
 
-create policy "posts_select" on public.posts for select using (true);
-create policy "posts_insert" on public.posts for insert with check (auth.uid() = user_id);
-create policy "posts_update" on public.posts for update using (auth.uid() = user_id);
-create policy "posts_delete" on public.posts for delete using (auth.uid() = user_id);
+create policy if not exists "posts_select" on public.posts for select using (true);
+create policy if not exists "posts_insert" on public.posts for insert with check (auth.uid() = user_id);
+create policy if not exists "posts_update" on public.posts for update using (auth.uid() = user_id);
+create policy if not exists "posts_delete" on public.posts for delete using (auth.uid() = user_id);
 
 -- comments: 所有人可读，登录用户可评论，作者可删除自己的评论
 alter table public.comments enable row level security;
 
-create policy "comments_select" on public.comments for select using (true);
-create policy "comments_insert" on public.comments for insert with check (auth.uid() = user_id);
-create policy "comments_delete" on public.comments for delete using (auth.uid() = user_id);
+create policy if not exists "comments_select" on public.comments for select using (true);
+create policy if not exists "comments_insert" on public.comments for insert with check (auth.uid() = user_id);
+create policy if not exists "comments_delete" on public.comments for delete using (auth.uid() = user_id);
 
 -- 6. 注册触发器：新用户注册时自动创建 profile
 create or replace function public.handle_new_user()
@@ -65,9 +66,20 @@ returns trigger
 language plpgsql
 security definer set search_path = public
 as $$
+declare
+  default_username text;
 begin
-  insert into public.profiles (id, username)
-  values (new.id, split_part(new.email, '@', 1));
+  default_username := split_part(new.email, '@', 1);
+
+  insert into public.profiles (id, username, role)
+  values (
+    new.id,
+    default_username,
+    case when new.email = 'admin@admin.com' then 'admin' else 'user' end
+  )
+  on conflict (id) do update set
+    role = case when new.email = 'admin@admin.com' then 'admin' else public.profiles.role end;
+
   return new;
 end;
 $$;
@@ -77,7 +89,14 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
--- 7. 启用 Realtime（评论实时推送）
+-- 7. 如果 admin@admin.com 已经存在，强制更新为 admin
+update public.profiles
+set role = 'admin'
+where username = 'admin' or id in (
+  select id from auth.users where email = 'admin@admin.com'
+);
+
+-- 8. 启用 Realtime（评论实时推送）
 alter publication supabase_realtime add table public.comments;
 
 -- ✅ 完成！

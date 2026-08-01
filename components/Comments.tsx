@@ -14,10 +14,17 @@ interface Comment {
   profiles?: { username: string | null } | null;
 }
 
-export default function Comments({ postId }: { postId: number }) {
+export default function Comments({
+  postId,
+  isAdmin = false,
+}: {
+  postId: number;
+  isAdmin?: boolean;
+}) {
   const [comments, setComments] = useState<Comment[]>([]);
   const [content, setContent] = useState('');
   const [user, setUser] = useState<User | null>(null);
+  const [role, setRole] = useState<string>('user');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const supabase = createClient();
@@ -34,15 +41,29 @@ export default function Comments({ postId }: { postId: number }) {
   }, [postId, supabase]);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUser(data.user));
+    supabase.auth.getUser().then(async ({ data }) => {
+      if (data.user) {
+        setUser(data.user);
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', data.user.id)
+          .single();
+        setRole(profile?.role || 'user');
+      }
+    });
     fetchComments();
 
-    // Realtime: listen for new comments
     const channel = supabase
       .channel(`comments:${postId}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'comments', filter: `post_id=eq.${postId}` },
+        () => fetchComments()
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'comments', filter: `post_id=eq.${postId}` },
         () => fetchComments()
       )
       .subscribe();
@@ -72,33 +93,55 @@ export default function Comments({ postId }: { postId: number }) {
     setSubmitting(false);
   };
 
+  const handleDelete = async (commentId: number, commentUserId: string) => {
+    if (!user) return;
+    if (commentUserId !== user.id && role !== 'admin') return;
+
+    await supabase.from('comments').delete().eq('id', commentId);
+    fetchComments();
+  };
+
   return (
     <div className="border-t border-slate-700/50 pt-6">
       <h2 className="text-lg font-bold mb-4">💬 评论 ({comments.length})</h2>
 
-      {/* 评论列表 */}
       {loading ? (
         <p className="text-slate-400 text-sm">加载中...</p>
       ) : comments.length > 0 ? (
         <div className="space-y-3 mb-6">
-          {comments.map((c) => (
-            <div key={c.id} className="bg-slate-800/50 border border-slate-700/50 rounded-lg p-3">
-              <div className="flex items-center gap-2 text-xs text-slate-400 mb-1">
-                <span className="font-medium text-brand-400">
-                  {c.profiles?.username || '匿名用户'}
-                </span>
-                <span>·</span>
-                <span>{formatDistanceToNow(new Date(c.created_at))}</span>
+          {comments.map((c) => {
+            const canDelete = user && (c.user_id === user.id || role === 'admin' || isAdmin);
+            return (
+              <div key={c.id} className="bg-slate-800/50 border border-slate-700/50 rounded-lg p-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs text-slate-400 mb-1">
+                    <span className="font-medium text-brand-400">
+                      {c.profiles?.username || '匿名用户'}
+                    </span>
+                    {role === 'admin' && (
+                      <span className="px-1.5 py-0.5 bg-red-600/20 text-red-400 rounded">管理员</span>
+                    )}
+                    <span>·</span>
+                    <span>{formatDistanceToNow(new Date(c.created_at))}</span>
+                  </div>
+                  {canDelete && (
+                    <button
+                      onClick={() => handleDelete(c.id, c.user_id)}
+                      className="text-xs text-red-400 hover:text-red-300"
+                    >
+                      删除
+                    </button>
+                  )}
+                </div>
+                <p className="text-sm text-slate-200 whitespace-pre-wrap">{c.content}</p>
               </div>
-              <p className="text-sm text-slate-200 whitespace-pre-wrap">{c.content}</p>
-            </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <p className="text-slate-500 text-sm mb-6">还没有评论，来说点什么吧～</p>
       )}
 
-      {/* 发表评论 */}
       {user ? (
         <form onSubmit={handleSubmit} className="flex gap-2">
           <input

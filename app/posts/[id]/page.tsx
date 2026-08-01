@@ -1,8 +1,9 @@
 import { createClient } from '@/lib/supabase-server';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { formatDistanceToNow } from '@/lib/date';
 import Comments from '@/components/Comments';
+import { getCurrentUser } from '@/lib/auth';
 
 export const revalidate = 0;
 
@@ -19,6 +20,7 @@ interface PostWithProfile {
 export default async function PostPage({ params }: { params: { id: string } }) {
   const supabase = createClient();
   const postId = Number(params.id);
+  const user = await getCurrentUser();
 
   if (isNaN(postId)) notFound();
 
@@ -32,6 +34,19 @@ export default async function PostPage({ params }: { params: { id: string } }) {
 
   if (!post) notFound();
 
+  const isOwner = user?.id === post.user_id;
+  const isAdmin = user?.isAdmin ?? false;
+
+  async function deletePost() {
+    'use server';
+    const supabaseServer = createClient();
+    const currentUser = await getCurrentUser();
+    if (!currentUser?.isAdmin) return;
+
+    await supabaseServer.from('posts').delete().eq('id', postId);
+    redirect('/');
+  }
+
   return (
     <article>
       {/* 返回按钮 */}
@@ -41,16 +56,31 @@ export default async function PostPage({ params }: { params: { id: string } }) {
 
       {/* 文章头部 */}
       <div className="mb-6 pb-6 border-b border-slate-700/50">
-        {post.category && (
-          <span className="inline-block px-2 py-0.5 bg-brand-600/20 text-brand-400 rounded-full text-xs mb-2">
-            {post.category}
-          </span>
-        )}
-        <h1 className="text-3xl font-bold text-white mb-3">{post.title}</h1>
-        <div className="flex items-center gap-2 text-sm text-slate-400">
-          <span>by {post.profiles?.username || '匿名'}</span>
-          <span>·</span>
-          <span>{formatDistanceToNow(new Date(post.created_at))}</span>
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1">
+            {post.category && (
+              <span className="inline-block px-2 py-0.5 bg-brand-600/20 text-brand-400 rounded-full text-xs mb-2">
+                {post.category}
+              </span>
+            )}
+            <h1 className="text-3xl font-bold text-white mb-3">{post.title}</h1>
+            <div className="flex items-center gap-2 text-sm text-slate-400">
+              <span>by {post.profiles?.username || '匿名'}</span>
+              <span>·</span>
+              <span>{formatDistanceToNow(new Date(post.created_at))}</span>
+            </div>
+          </div>
+
+          {(isOwner || isAdmin) && (
+            <form action={deletePost}>
+              <button
+                type="submit"
+                className="px-3 py-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-400 text-sm rounded-lg border border-red-900 transition-colors"
+              >
+                {isAdmin && !isOwner ? '管理员删除' : '删除'}
+              </button>
+            </form>
+          )}
         </div>
       </div>
 
@@ -60,7 +90,7 @@ export default async function PostPage({ params }: { params: { id: string } }) {
       </div>
 
       {/* 评论区 */}
-      <Comments postId={post.id} />
+      <Comments postId={post.id} isAdmin={isAdmin} />
     </article>
   );
 }

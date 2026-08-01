@@ -63,18 +63,21 @@ export interface Database {
           id: string;
           username: string | null;
           avatar_url: string | null;
+          role: string | null;
           created_at: string | null;
         };
         Insert: {
           id: string;
           username?: string | null;
           avatar_url?: string | null;
+          role?: string | null;
           created_at?: string | null;
         };
         Update: {
           id?: string;
           username?: string | null;
           avatar_url?: string | null;
+          role?: string | null;
           created_at?: string | null;
         };
       };
