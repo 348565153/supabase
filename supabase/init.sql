@@ -75,10 +75,10 @@ begin
   values (
     new.id,
     default_username,
-    case when new.email = 'admin@admin.com' then 'admin' else 'user' end
+    case when new.email = '348565153@qq.com' then 'admin' else 'user' end
   )
   on conflict (id) do update set
-    role = case when new.email = 'admin@admin.com' then 'admin' else public.profiles.role end;
+    role = case when new.email = '348565153@qq.com' then 'admin' else public.profiles.role end;
 
   return new;
 end;
@@ -89,11 +89,11 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
--- 7. 如果 admin@admin.com 已经存在，强制更新为 admin
+-- 7. 如果 348565153@qq.com 已经存在，强制更新为 admin
 update public.profiles
 set role = 'admin'
 where username = 'admin' or id in (
-  select id from auth.users where email = 'admin@admin.com'
+  select id from auth.users where email = '348565153@qq.com'
 );
 
 -- 8. 启用 Realtime（评论实时推送）
