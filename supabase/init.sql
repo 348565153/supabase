@@ -109,6 +109,19 @@ where id in (
 );
 
 -- 8. 启用 Realtime（评论实时推送）
-alter publication supabase_realtime add table public.comments;
+-- 先检查 comments 是否已在 publication 中，避免重复添加报错
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'comments'
+  ) then
+    alter publication supabase_realtime add table public.comments;
+  end if;
+end
+$$;
 
 -- ✅ 完成！
