@@ -29,7 +29,7 @@ export default function Comments({ postId }: { postId: number }) {
       .eq('post_id', postId)
       .order('created_at', { ascending: true });
 
-    if (data) setComments(data as Comment[]);
+    if (data) setComments((data as unknown as Comment[]) ?? []);
     setLoading(false);
   }, [postId, supabase]);
 

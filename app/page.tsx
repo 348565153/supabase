@@ -4,19 +4,31 @@ import { formatDistanceToNow } from '@/lib/date';
 
 export const revalidate = 0;
 
+interface PostWithProfile {
+  id: number;
+  user_id: string;
+  title: string;
+  content: string | null;
+  category: string | null;
+  created_at: string;
+  profiles: { username: string | null } | null;
+}
+
 export default async function HomePage() {
   const supabase = createClient();
 
-  const { data: posts } = await supabase
+  const { data: rawPosts } = await supabase
     .from('posts')
     .select('*, profiles!posts_user_id_fkey(username)')
     .order('created_at', { ascending: false });
+
+  const posts = (rawPosts ?? []) as unknown as PostWithProfile[];
 
   return (
     <div>
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-2xl font-bold">最新文章</h1>
-        <span className="text-sm text-slate-400">{posts?.length || 0} 篇</span>
+        <span className="text-sm text-slate-400">{posts.length || 0} 篇</span>
       </div>
 
       {posts && posts.length > 0 ? (

@@ -6,17 +6,29 @@ import Comments from '@/components/Comments';
 
 export const revalidate = 0;
 
+interface PostWithProfile {
+  id: number;
+  user_id: string;
+  title: string;
+  content: string | null;
+  category: string | null;
+  created_at: string;
+  profiles: { username: string | null } | null;
+}
+
 export default async function PostPage({ params }: { params: { id: string } }) {
   const supabase = createClient();
   const postId = Number(params.id);
 
   if (isNaN(postId)) notFound();
 
-  const { data: post } = await supabase
+  const { data: rawPost } = await supabase
     .from('posts')
     .select('*, profiles!posts_user_id_fkey(username)')
     .eq('id', postId)
     .single();
+
+  const post = rawPost as unknown as PostWithProfile | null;
 
   if (!post) notFound();
 
