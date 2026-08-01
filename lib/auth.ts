@@ -1,5 +1,9 @@
 import { createClient } from './supabase-server';
 
+interface Profile {
+  role: string | null;
+}
+
 export async function getCurrentUser() {
   const supabase = createClient();
   const {
@@ -9,11 +13,13 @@ export async function getCurrentUser() {
 
   if (error || !user) return null;
 
-  const { data: profile } = await supabase
+  const { data: rawProfile } = await supabase
     .from('profiles')
     .select('role')
     .eq('id', user.id)
     .single();
+
+  const profile = rawProfile as Profile | null;
 
   return {
     id: user.id,
