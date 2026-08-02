@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { formatDistanceToNow } from '@/lib/date';
 import Comments from '@/components/Comments';
 
+// 强制动态渲染，避免构建时静态生成导致 404
+export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 interface PostWithProfile {
@@ -38,12 +40,10 @@ export default async function PostPage({ params }: PageProps) {
 
   return (
     <article>
-      {/* 返回按钮 */}
       <Link href="/" className="text-sm text-slate-400 hover:text-white mb-4 inline-block">
         ← 返回首页
       </Link>
 
-      {/* 文章头部 */}
       <div className="mb-6 pb-6 border-b border-slate-700/50">
         {post.category && (
           <span className="inline-block px-2 py-0.5 bg-brand-600/20 text-brand-400 rounded-full text-xs mb-2">
@@ -58,12 +58,10 @@ export default async function PostPage({ params }: PageProps) {
         </div>
       </div>
 
-      {/* 文章内容 */}
       <div className="prose-content text-slate-200 whitespace-pre-wrap mb-12 leading-relaxed">
         {post.content || '(无内容)'}
       </div>
 
-      {/* 评论区 */}
       <Comments postId={post.id} />
     </article>
   );
